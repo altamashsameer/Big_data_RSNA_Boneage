@@ -1,0 +1,49 @@
+DROP TABLE IF EXISTS raw_boneage_data;
+DROP TABLE IF EXISTS boneage_data;
+
+
+CREATE EXTERNAL TABLE raw_boneage_data (
+    id STRING,
+    boneage INT,
+    male STRING
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+LOCATION 'gs://altamash/boneage/';
+
+
+CREATE TABLE boneage_data AS
+SELECT 
+    id,
+    boneage,
+    male,
+    CASE WHEN lower(male) = 'true' THEN 'boy' ELSE 'girl' END AS gender_str,
+    CASE 
+        WHEN boneage < 84 THEN 'Baby'
+        WHEN boneage < 156 THEN 'Child'
+        ELSE 'Teen'
+    END AS age_group
+FROM raw_boneage_data
+WHERE boneage IS NOT NULL AND male IS NOT NULL AND id != 'id';
+
+
+INSERT OVERWRITE DIRECTORY 'gs://altamash/hive-output/gender_count'
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+SELECT gender_str, COUNT(*) AS count
+FROM boneage_data
+GROUP BY gender_str;
+
+
+INSERT OVERWRITE DIRECTORY 'gs://altamash/hive-output/avg_boneage_by_gender'
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+SELECT gender_str, AVG(boneage) AS avg_boneage
+FROM boneage_data
+GROUP BY gender_str;
+
+
+INSERT OVERWRITE DIRECTORY 'gs://altamash/hive-output/age_group_count'
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+SELECT age_group, COUNT(*) AS count
+FROM boneage_data
+GROUP BY age_group;
